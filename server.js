@@ -79,8 +79,34 @@ app.post("/api/verify-passphrase", async (req, res) => {
     await logToSheet(name, token, true);
     return res.json({
       ok: true,
-      snippet: `// Secret snippet revealed
-console.log("Access granted: hidden code");`,
+      snippet: `#Copy and paste the following Python script to reveal the hidden message from an image:
+#!/usr/bin/env python3
+from PIL import Image
+
+print("Enter path to your image file:")
+path = input("> ").strip()
+img = Image.open(path).convert("RGB")
+pixels = img.load()
+
+message = []
+for y in range(img.height):
+    for x in range(img.width):
+        r, g, b = pixels[x, y]
+        if abs(r - g) < 3 and abs(g - b) < 3:  # roughly grayscale pixel
+            # reverse +100 offset
+            val = r - 100
+            if 32 <= val <= 126:
+                message.append(chr(val))
+
+hidden = "".join(message)
+if hidden:
+    print("\nPossible hidden message:\n")
+    print("→", hidden)
+else:
+    print("\nNo readable ASCII sequence found.")
+
+input("\nPress Enter to exit...")
+`,
     });
   }
 

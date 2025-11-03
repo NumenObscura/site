@@ -16,7 +16,7 @@ body {
 
 .hidden-word {
     cursor: pointer;
-    text-decoration: underline dotted;
+    text-decoration: none;
 }
 
 .hidden {
