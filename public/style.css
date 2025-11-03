@@ -1,0 +1,54 @@
+body {
+    background-color: #f8f5f0;
+    color: #222;
+    font-family: "Courier New", monospace;
+    margin: 0;
+    padding: 0;
+    transition: background-color 0.3s ease;
+}
+
+.story-container {
+    max-width: 700px;
+    margin: 60px auto;
+    line-height: 1.6;
+    font-size: 1.1rem;
+}
+
+.hidden-word {
+    cursor: pointer;
+    text-decoration: underline dotted;
+}
+
+.hidden {
+    display: none;
+}
+
+#terminal-container {
+    color: #00ff90;
+    background: black;
+    height: 100vh;
+    padding: 20px;
+    font-family: monospace;
+}
+
+#terminal-output {
+    white-space: pre-wrap;
+    line-height: 1.5;
+}
+
+#user-input {
+    width: 100%;
+    background: transparent;
+    border: none;
+    color: #00ff90;
+    outline: none;
+    font-family: monospace;
+    font-size: 1rem;
+}
+
+pre.code-snippet {
+    background: #001800;
+    padding: 10px;
+    color: #0f0;
+    border-left: 3px solid #0f0;
+}

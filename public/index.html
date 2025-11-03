@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Obscura Archives</title>
+    <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+    <div id="story-container" class="story-container">
+        <h1>The Obscura Archive</h1>
+        <p id="glitch-zone">
+            It began as a simple study in forgotten languages. Dusty manuscripts, smudged ink, whispers of meaning
+            between the lines.
+        </p>
+        <p>
+            Then, between the folds of parchment, I found a single word that didn’t belong:
+            <span id="trigger-word" class="hidden-word">obscura</span>.
+        </p>
+    </div>
+
+    <div id="terminal-container" class="hidden">
+        <pre id="terminal-output"></pre>
+        <input id="user-input" type="text" placeholder="█" autocomplete="off" />
+    </div>
+
+    <audio id="hum-sound" src="sounds/hum.wav" loop preload="auto"></audio>
+    <script src="script.js" defer></script>
+</body>
+
+</html>
