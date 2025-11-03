@@ -1,81 +1,93 @@
 // server.js
 import express from "express";
-import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import cors from "cors";
 import bodyParser from "body-parser";
-import fetch from "node-fetch";
+import { google } from "googleapis";
+import bcrypt from "bcryptjs";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 app.use(express.static("public"));
 
-// Environment variables
-const GOOGLE_SCRIPT_URL = process.env.GOOGLE_SCRIPT_URL;
-const GOOGLE_SCRIPT_KEY = process.env.GOOGLE_SCRIPT_KEY;
+// === GOOGLE SHEETS SETUP ===
+const auth = new google.auth.GoogleAuth({
+  credentials: {
+    client_email: process.env.GOOGLE_CLIENT_EMAIL,
+    private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+  },
+  scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+});
 
-const HASHED_PASS_LOGIN = process.env.HASHED_PASS_LOGIN || "$2a$12$0GyevvDraOWwNX9YZsQPZeEE1G9y4b9aqnutThb3zuS34JZAzb6Gy";
-const HASHED_PASS_SECRET = process.env.HASHED_PASS_SECRET || "$2a$12$bbhSXrQ4VnT.6WYDJ5QZGuYj8e8LQ89VnJiinhcudbffb37HJ1ic.";
+const sheets = google.sheets({ version: "v4", auth });
 
-// In-memory store of users
-const users = new Map();
+// === USER DATA ===
+const users = new Map(); // name → { hash, token }
 
-// Google Sheet logger
-async function logToSheet(name, token, action = "unspecified") {
+// === FUNCTIONS ===
+async function logToSheet(name, token, passphrase_ok = false) {
+  const now = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
   try {
-    await fetch(GOOGLE_SCRIPT_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name,
-        token,
-        action,
-        secret: GOOGLE_SCRIPT_KEY
-      }),
+    await sheets.spreadsheets.values.append({
+      spreadsheetId: process.env.GOOGLE_SHEET_ID,
+      range: "Sheet1!A:D",
+      valueInputOption: "USER_ENTERED",
+      requestBody: {
+        values: [[name, token, now, passphrase_ok ? "YES" : "NO"]],
+      },
     });
-    console.log(`[LOGGED] ${name} (${action}) → Sheet updated`);
+    console.log(`[LOGGED] ${name} at ${now}`);
   } catch (err) {
-    console.error("Failed to log to Google Sheet:", err);
+    console.error("❌ Sheet logging failed:", err.message);
   }
 }
 
-// LOGIN endpoint
+// === AUTH ENDPOINT ===
 app.post("/api/auth", async (req, res) => {
-  const { name, pass } = req.body || {};
-  if (!name || !pass) return res.status(400).json({ ok: false });
+  const { name, pass } = req.body;
 
-  const valid = await bcrypt.compare(pass, HASHED_PASS_LOGIN);
-  if (!valid) return res.status(401).json({ ok: false });
-
-  let record = users.get(name);
-  if (!record) {
-    const token = crypto.randomBytes(24).toString("hex");
-    record = { token };
-    users.set(name, record);
-    await logToSheet(name, token, "login");
-  } else {
-    await logToSheet(name, record.token, "login (repeat)");
+  const valid = await bcrypt.compare(pass, process.env.HASHED_PASS_LOGIN);
+  if (valid) {
+    let record = users.get(name);
+    if (!record) {
+      const token = crypto.randomBytes(24).toString("hex");
+      record = { token };
+      users.set(name, record);
+      console.log(`[AUTH OK] ${name} → token=${token}`);
+      await logToSheet(name, token);
+    } else {
+      console.log(`[AUTH RETURN] ${name} → token=${record.token}`);
+      await logToSheet(name, record.token);
+    }
+    return res.json({ ok: true, token: record.token });
   }
 
-  return res.json({ ok: true, token: record.token });
+  res.json({ ok: false });
 });
 
-// PASSPHRASE endpoint
+// === PASSPHRASE CHECK ===
 app.post("/api/verify-passphrase", async (req, res) => {
-  const { passphrase, name } = req.body || {};
-  const valid = await bcrypt.compare(passphrase, HASHED_PASS_SECRET);
-  if (!valid) return res.status(401).json({ ok: false });
+  const { passphrase, name } = req.body;
 
-  const token = users.get(name)?.token || "N/A";
-  await logToSheet(name || "Unknown", token, "passphrase_ok");
-
-  return res.json({
-    ok: true,
-    snippet: `// Secret snippet revealed
+  const valid = await bcrypt.compare(passphrase, process.env.HASHED_PASS_SECRET);
+  if (valid) {
+    const token = users.get(name)?.token || "N/A";
+    await logToSheet(name, token, true);
+    return res.json({
+      ok: true,
+      snippet: `// Secret snippet revealed
 console.log("Access granted: hidden code");`,
-  });
+    });
+  }
+
+  res.json({ ok: false });
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Server running on http://localhost:" + PORT));
+// === SERVER ===
+app.listen(process.env.PORT || 3000, () =>
+  console.log(`✅ Server running on http://localhost:${process.env.PORT || 3000}`)
+);
