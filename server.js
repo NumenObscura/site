@@ -15,18 +15,24 @@ app.use(bodyParser.json());
 app.use(express.static("public"));
 
 // === GOOGLE SHEETS SETUP ===
-const auth = new google.auth.GoogleAuth({
-  credentials: {
-    client_email: process.env.GOOGLE_CLIENT_EMAIL,
-    private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n"),
-  },
-  scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-});
+let sheets;
+try {
+  const auth = new google.auth.GoogleAuth({
+    credentials: {
+      client_email: process.env.GOOGLE_CLIENT_EMAIL,
+      private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n"),
+    },
+    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+  });
 
-const sheets = google.sheets({ version: "v4", auth });
+  sheets = google.sheets({ version: "v4", auth });
+  console.log("✅ Google Sheets API initialized");
+} catch (err) {
+  console.error("❌ Failed to initialize Google Sheets:", err.message);
+}
 
 // === USER DATA ===
-const users = new Map(); // name → { hash, token }
+const users = new Map(); // name → { token }
 
 // === FUNCTIONS ===
 async function logToSheet(name, token, passphrase_ok = false) {
@@ -40,9 +46,9 @@ async function logToSheet(name, token, passphrase_ok = false) {
         values: [[name, token, now, passphrase_ok ? "YES" : "NO"]],
       },
     });
-    console.log(`[LOGGED] ${name} at ${now}`);
+    console.log(`📝 Logged: ${name} at ${now}`);
   } catch (err) {
-    console.error("❌ Sheet logging failed:", err.message);
+    console.error("❌ Google Sheets logging failed:", err.message);
   }
 }
 
@@ -50,20 +56,24 @@ async function logToSheet(name, token, passphrase_ok = false) {
 app.post("/api/auth", async (req, res) => {
   const { name, pass } = req.body;
 
-  const valid = await bcrypt.compare(pass, process.env.HASHED_PASS_LOGIN);
-  if (valid) {
-    let record = users.get(name);
-    if (!record) {
-      const token = crypto.randomBytes(24).toString("hex");
-      record = { token };
-      users.set(name, record);
-      console.log(`[AUTH OK] ${name} → token=${token}`);
-      await logToSheet(name, token);
-    } else {
-      console.log(`[AUTH RETURN] ${name} → token=${record.token}`);
-      await logToSheet(name, record.token);
+  try {
+    const valid = await bcrypt.compare(pass, process.env.HASHED_PASS_LOGIN);
+    if (valid) {
+      let record = users.get(name);
+      if (!record) {
+        const token = crypto.randomBytes(24).toString("hex");
+        record = { token };
+        users.set(name, record);
+        console.log(`[AUTH OK] ${name} → token=${token}`);
+        await logToSheet(name, token);
+      } else {
+        console.log(`[AUTH RETURN] ${name} → existing token`);
+        await logToSheet(name, record.token);
+      }
+      return res.json({ ok: true, token: record.token });
     }
-    return res.json({ ok: true, token: record.token });
+  } catch (err) {
+    console.error("❌ Auth error:", err.message);
   }
 
   res.json({ ok: false });
@@ -73,13 +83,14 @@ app.post("/api/auth", async (req, res) => {
 app.post("/api/verify-passphrase", async (req, res) => {
   const { passphrase, name } = req.body;
 
-  const valid = await bcrypt.compare(passphrase, process.env.HASHED_PASS_SECRET);
-  if (valid) {
-    const token = users.get(name)?.token || "N/A";
-    await logToSheet(name, token, true);
-    return res.json({
-      ok: true,
-      snippet: `#Copy and paste the following Python script to reveal the hidden message from an image:
+  try {
+    const valid = await bcrypt.compare(passphrase, process.env.HASHED_PASS_SECRET);
+    if (valid) {
+      const token = users.get(name)?.token || "N/A";
+      await logToSheet(name, token, true);
+      return res.json({
+        ok: true,
+        snippet: `# Copy and paste this Python script to reveal the hidden message from an image:
 #!/usr/bin/env python3
 from PIL import Image
 
@@ -92,28 +103,29 @@ message = []
 for y in range(img.height):
     for x in range(img.width):
         r, g, b = pixels[x, y]
-        if abs(r - g) < 3 and abs(g - b) < 3:  # roughly grayscale pixel
-            # reverse +100 offset
+        if abs(r - g) < 3 and abs(g - b) < 3:
             val = r - 100
             if 32 <= val <= 126:
                 message.append(chr(val))
 
 hidden = "".join(message)
 if hidden:
-    print("\nPossible hidden message:\n")
+    print("\\nPossible hidden message:\\n")
     print("→", hidden)
 else:
-    print("\nNo readable ASCII sequence found.")
+    print("\\nNo readable ASCII sequence found.")
 
-input("\nPress Enter to exit...")
+input("\\nPress Enter to exit...")
 `,
-    });
+      });
+    }
+  } catch (err) {
+    console.error("❌ Passphrase error:", err.message);
   }
 
   res.json({ ok: false });
 });
 
-// === SERVER ===
-app.listen(process.env.PORT || 3000, () =>
-  console.log(`✅ Server running on http://localhost:${process.env.PORT || 3000}`)
-);
+// === SERVER START ===
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`🚀 Server running on http://localhost:${PORT}`));
