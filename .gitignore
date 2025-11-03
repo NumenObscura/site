@@ -1,0 +1,13 @@
+# Environment secrets
+.env
+
+# Local logs (just in case)
+private_logs.txt
+
+# Dependencies
+node_modules/
+
+# OS / editor junk
+.DS_Store
+Thumbs.db
+.vscode/
